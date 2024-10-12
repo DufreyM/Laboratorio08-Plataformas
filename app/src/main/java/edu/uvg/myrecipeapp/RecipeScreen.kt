@@ -130,7 +130,7 @@ fun MealItem(meal: Meal, onClick: () -> Unit) {
 
         Text(
             text = meal.strMeal,
-            color = Color.Black,
+            color = Color.White,
             style = TextStyle(fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(top = 4.dp)
         )

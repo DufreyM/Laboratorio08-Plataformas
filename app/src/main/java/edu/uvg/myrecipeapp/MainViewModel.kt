@@ -123,41 +123,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Función para obtener recetas por categoría
     fun fetchMealsByCategory(category: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val response = recipeService.getMealsByCategory(category)
-                withContext(Dispatchers.Main) {
-                    _mealsState.value = _mealsState.value.copy(
-                        meals = response.meals,
-                        loading = false,
-                        error = null
+            if (isInternetAvailable(getApplication<Application>().applicationContext)) {
+                try {
+                    val response = recipeService.getMealsByCategory(category)
+
+                    // Insertar comidas en la base de datos local
+                    val mealEntities = response.meals.map { meal ->
+                        MealEntity(
+                            idMeal = meal.idMeal,
+                            strMeal = meal.strMeal,
+                            strMealThumb = meal.strMealThumb,
+                            strCategory = category
+                        )
+                    }
+                    db.MealDao().insertMeals(mealEntities)
+
+                    withContext(Dispatchers.Main) {
+                        _mealsState.value = _mealsState.value.copy(
+                            meals = response.meals,
+                            loading = false,
+                            error = null
+                        )
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        _mealsState.value = _mealsState.value.copy(
+                            loading = false,
+                            error = "Error fetching meals: ${e.localizedMessage}"
+                        )
+                    }
+                }
+            } else {
+                // Cargar comidas desde la base de datos local si no hay internet
+                val mealsFromDb = db.MealDao().getMealsByCategory(category)
+                val meals = mealsFromDb.map { mealEntity ->
+                    Meal(
+                        idMeal = mealEntity.idMeal,
+                        strMeal = mealEntity.strMeal,
+                        strMealThumb = mealEntity.strMealThumb
                     )
                 }
-            } catch (e: Exception) {
+
                 withContext(Dispatchers.Main) {
                     _mealsState.value = _mealsState.value.copy(
+                        meals = meals,
                         loading = false,
-                        error = "Error fetching meals: ${e.localizedMessage}"
+                        error = if (meals.isEmpty()) "No meals found offline for this category" else null
                     )
                 }
             }
         }
     }
 
+
     // Función para obtener los detalles de una receta por ID
     fun fetchMealDetails(context: Context, mealId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             if (isInternetAvailable(context)) {
                 try {
+                    // Obtener detalles desde el API
                     val response = recipeService.getMealDetailsById(mealId)
                     val mealDetail = response.meals.firstOrNull()
 
                     mealDetail?.let {
+                        // Insertar detalles en la base de datos local
                         db.mealDetailDao().insertMealDetail(
                             MealDetailEntity(
-                                it.idMeal,
-                                it.strMeal,
-                                it.strMealThumb,
-                                it.strInstructions
+                                idMeal = it.idMeal,
+                                strMeal = it.strMeal,
+                                strMealThumb = it.strMealThumb,
+                                strInstructions = it.strInstructions
                             )
                         )
                     }
@@ -166,14 +201,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _mealDetailState.value = _mealDetailState.value.copy(
                             mealDetail = mealDetail,
                             loading = false,
-                            error = if (mealDetail == null) "Meal details not found" else null
+                            error = if (mealDetail == null) "No se encontraron detalles de la receta" else null
                         )
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         _mealDetailState.value = _mealDetailState.value.copy(
                             loading = false,
-                            error = "Error fetching details: ${e.localizedMessage}"
+                            error = "Error al obtener los detalles: ${e.localizedMessage}"
                         )
                     }
                 }
@@ -186,7 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             MealDetail(it.idMeal, it.strMeal, it.strMealThumb, it.strInstructions)
                         },
                         loading = false,
-                        error = if (mealDetailEntity == null) "Meal details not found offline" else null
+                        error = if (mealDetailEntity == null) "Receta no encontrada en modo offline" else null
                     )
                 }
             }
